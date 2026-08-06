@@ -4,7 +4,7 @@ import libCellMLModule from "libcellml.js";
 import libCellMLWasmUrl from "libcellml.js/libcellml.wasm?url";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
-type EditorSubview = "xml" | "simulation" | "math";
+type EditorSubview = "xml" | "simulation";
 
 interface SimulationSettings {
   startTime: number;
@@ -21,8 +21,12 @@ interface ModelTab {
   xml: string;
   activeSubview: EditorSubview;
   simulation: SimulationSettings;
-  mathReadable: string[];
   validationMessage: string;
+}
+
+interface MonacoPosition {
+  lineNumber: number;
+  column: number;
 }
 
 interface Disposable {
@@ -33,9 +37,17 @@ interface MonacoEditor {
   layout: () => void;
   getValue: () => string;
   setValue: (value: string) => void;
+  getPosition: () => MonacoPosition | null;
   dispose: () => void;
   updateOptions: (options: Record<string, unknown>) => void;
   onDidChangeModelContent: (listener: () => void) => Disposable;
+  onDidChangeCursorPosition: (listener: (event: { position: MonacoPosition }) => void) => Disposable;
+}
+
+interface MathPreview {
+  statusMessage: string;
+  rawApply: string | null;
+  presentationMathMl: string | null;
 }
 
 const tabs = ref<ModelTab[]>([]);
@@ -46,11 +58,19 @@ const statusMessage = ref("Drop CellML files here to open them in tabs.");
 const fileInput = ref<HTMLInputElement | null>(null);
 const xmlEditorHost = ref<HTMLElement | null>(null);
 const subviewBody = ref<HTMLElement | null>(null);
+const xmlEditorPane = ref<HTMLElement | null>(null);
 
 const libCellmlState = ref<"idle" | "loading" | "ready" | "error">("idle");
 const libCellmlError = ref<string | null>(null);
 const libCellmlApi = ref<any>(null);
 const libCellmlVersion = ref<string | null>(null);
+const mathPreview = ref<MathPreview>({
+  statusMessage: "Move the cursor inside a MathML apply element to preview an equation.",
+  rawApply: null,
+  presentationMathMl: null,
+});
+const equationPreviewWidth = ref(360);
+const resizingPreview = ref(false);
 
 const activeTab = computed(() => tabs.value.find((tab) => tab.id === activeTabId.value) ?? null);
 const libCellmlTooltipText = computed(() => {
@@ -71,9 +91,69 @@ const libCellmlTooltipText = computed(() => {
 
 let monacoEditor: MonacoEditor | null = null;
 let monacoSubscription: Disposable | null = null;
+let monacoCursorSubscription: Disposable | null = null;
 let boundEditorTabId: string | null = null;
 let syncingEditorFromModel = false;
 let creatingMonacoEditorPromise: Promise<void> | null = null;
+let resizeStartX = 0;
+let resizeStartWidth = 0;
+
+const MATHML_NAMESPACE = "http://www.w3.org/1998/Math/MathML";
+const GREEK_SYMBOL_BY_NAME: Record<string, string> = {
+  alpha: "\u03b1",
+  beta: "\u03b2",
+  gamma: "\u03b3",
+  delta: "\u03b4",
+  epsilon: "\u03b5",
+  varepsilon: "\u03f5",
+  zeta: "\u03b6",
+  eta: "\u03b7",
+  theta: "\u03b8",
+  vartheta: "\u03d1",
+  iota: "\u03b9",
+  kappa: "\u03ba",
+  lambda: "\u03bb",
+  mu: "\u03bc",
+  nu: "\u03bd",
+  xi: "\u03be",
+  pi: "\u03c0",
+  varpi: "\u03d6",
+  rho: "\u03c1",
+  varrho: "\u03f1",
+  sigma: "\u03c3",
+  varsigma: "\u03c2",
+  tau: "\u03c4",
+  upsilon: "\u03c5",
+  phi: "\u03c6",
+  varphi: "\u03d5",
+  chi: "\u03c7",
+  psi: "\u03c8",
+  omega: "\u03c9",
+  alpha_upper: "\u0391",
+  beta_upper: "\u0392",
+  gamma_upper: "\u0393",
+  delta_upper: "\u0394",
+  epsilon_upper: "\u0395",
+  zeta_upper: "\u0396",
+  eta_upper: "\u0397",
+  theta_upper: "\u0398",
+  iota_upper: "\u0399",
+  kappa_upper: "\u039a",
+  lambda_upper: "\u039b",
+  mu_upper: "\u039c",
+  nu_upper: "\u039d",
+  xi_upper: "\u039e",
+  omicron_upper: "\u039f",
+  pi_upper: "\u03a0",
+  rho_upper: "\u03a1",
+  sigma_upper: "\u03a3",
+  tau_upper: "\u03a4",
+  upsilon_upper: "\u03a5",
+  phi_upper: "\u03a6",
+  chi_upper: "\u03a7",
+  psi_upper: "\u03a8",
+  omega_upper: "\u03a9",
+};
 
 const monacoTheme = {
   base: "vs-dark",
@@ -182,108 +262,524 @@ const validateWithLibCellml = (xml: string) => {
   }
 };
 
-const stripNamespaces = (value: string) =>
-  value
-    .replace(/<\/?math[^>]*>/gi, "")
-    .replace(/xmlns(:[a-z0-9_-]+)?=\"[^\"]*\"/gi, "")
-    .trim();
-
-const operatorSymbolByName: Record<string, string> = {
-  plus: "+",
-  minus: "-",
-  times: "*",
-  divide: "/",
-  power: "^",
-  eq: "=",
-  lt: "<",
-  gt: ">",
-  leq: "<=",
-  geq: ">=",
+const getLocalTagName = (name: string) => {
+  const parts = name.split(":");
+  return parts[parts.length - 1]?.toLowerCase() ?? "";
 };
 
-const renderMathNode = (node: Element): string => {
-  const nodeName = node.localName.toLowerCase();
+const offsetFromPosition = (text: string, position: MonacoPosition) => {
+  let offset = 0;
+  let currentLine = 1;
 
-  if (nodeName === "ci" || nodeName === "cn") {
-    return (node.textContent ?? "").trim();
+  while (currentLine < position.lineNumber && offset < text.length) {
+    const nextLineBreak = text.indexOf("\n", offset);
+    if (nextLineBreak < 0) {
+      offset = text.length;
+      break;
+    }
+    offset = nextLineBreak + 1;
+    currentLine += 1;
   }
 
-  if (nodeName === "apply") {
-    const elements = Array.from(node.children);
+  return Math.min(offset + Math.max(position.column - 1, 0), text.length);
+};
 
-    if (!elements.length) {
-      return "";
+const findMatchingTagEnd = (text: string, startIndex: number, localTagName: string) => {
+  const tagPattern = /<\/?([a-zA-Z_][\w.-]*:)?([a-zA-Z_][\w.-]*)\b[^>]*>/g;
+  tagPattern.lastIndex = startIndex;
+
+  let depth = 0;
+  let started = false;
+
+  for (;;) {
+    const match = tagPattern.exec(text);
+    if (!match) {
+      return -1;
     }
 
-    const operator = elements[0]?.localName.toLowerCase() ?? "";
-    const operands = elements.slice(1).map((child) => renderMathNode(child)).filter(Boolean);
+    const fullTag = match[0];
+    const isClosingTag = fullTag.startsWith("</");
+    const isSelfClosingTag = fullTag.endsWith("/>");
+    const matchedLocalName = getLocalTagName(match[2] ?? "");
 
-    if (operator in operatorSymbolByName) {
-      if (operands.length === 1 && operator === "minus") {
-        return `(-${operands[0]})`;
+    if (matchedLocalName !== localTagName) {
+      continue;
+    }
+
+    if (!isClosingTag) {
+      depth += 1;
+      started = true;
+
+      if (isSelfClosingTag) {
+        depth -= 1;
+      }
+    } else {
+      depth -= 1;
+    }
+
+    if (started && depth === 0) {
+      return match.index + fullTag.length;
+    }
+  }
+};
+
+const findEnclosingTagRange = (text: string, targetOffset: number, localTagName: string) => {
+  const openTagPattern = new RegExp(`<([a-zA-Z_][\\w.-]*:)?${localTagName}\\b[^>]*>`, "gi");
+  const candidateStarts: number[] = [];
+
+  for (;;) {
+    const match = openTagPattern.exec(text);
+    if (!match || match.index > targetOffset) {
+      break;
+    }
+
+    if (!match[0].endsWith("/>") && match.index <= targetOffset) {
+      candidateStarts.push(match.index);
+    }
+  }
+
+  for (let index = candidateStarts.length - 1; index >= 0; index -= 1) {
+    const start = candidateStarts[index];
+    if (start === undefined) {
+      continue;
+    }
+
+    const end = findMatchingTagEnd(text, start, localTagName);
+    if (end > start && targetOffset <= end) {
+      return { start, end };
+    }
+  }
+
+  return null;
+};
+
+const findDirectChildApplyRanges = (mathSource: string) => {
+  const tagPattern = /<\/?([a-zA-Z_][\w.-]*:)?([a-zA-Z_][\w.-]*)\b[^>]*>/g;
+  const ranges: Array<{ start: number; end: number }> = [];
+  let depth = 0;
+  let foundMathRoot = false;
+
+  for (;;) {
+    const match = tagPattern.exec(mathSource);
+    if (!match) {
+      break;
+    }
+
+    const fullTag = match[0];
+    const localName = getLocalTagName(match[2] ?? "");
+    const isClosingTag = fullTag.startsWith("</");
+    const isSelfClosingTag = fullTag.endsWith("/>");
+
+    if (!foundMathRoot && !isClosingTag && localName === "math") {
+      foundMathRoot = true;
+      depth = isSelfClosingTag ? 0 : 1;
+      continue;
+    }
+
+    if (!foundMathRoot) {
+      continue;
+    }
+
+    if (!isClosingTag) {
+      if (localName === "apply" && depth === 1 && !isSelfClosingTag) {
+        const end = findMatchingTagEnd(mathSource, match.index, "apply");
+        if (end > match.index) {
+          ranges.push({ start: match.index, end });
+        }
       }
 
-      return `(${operands.join(` ${operatorSymbolByName[operator]} `)})`;
+      if (!isSelfClosingTag) {
+        depth += 1;
+      }
+    } else {
+      depth = Math.max(depth - 1, 0);
+      if (localName === "math" && depth === 0) {
+        break;
+      }
     }
-
-    if (operator === "diff") {
-      const bvar = elements.find((child) => child.localName.toLowerCase() === "bvar");
-      const wrt = bvar?.querySelector("ci")?.textContent?.trim() ?? "t";
-      const expr = operands.length ? operands[operands.length - 1] : "?";
-      return `d(${expr})/d${wrt}`;
-    }
-
-    return `${operator}(${operands.join(", ")})`;
   }
 
-  if (nodeName === "piecewise") {
-    return "piecewise(...)";
-  }
-
-  if (node.children.length) {
-    const children = Array.from(node.children).map((child) => renderMathNode(child)).filter(Boolean);
-    return `${nodeName}(${children.join(", ")})`;
-  }
-
-  return (node.textContent ?? "").trim();
+  return ranges;
 };
 
-const buildMathReadable = (xml: string) => {
-  const blocks = Array.from(xml.matchAll(/<math[\s\S]*?<\/math>/gi)).map((match) => match[0]);
+const createMathElement = (doc: XMLDocument, name: string, text?: string) => {
+  const element = doc.createElementNS(MATHML_NAMESPACE, name);
+  if (text !== undefined) {
+    element.textContent = text;
+  }
+  return element;
+};
 
-  if (!blocks.length) {
-    return ["No MathML <math> blocks found in this model."];
+const wrapWithParentheses = (doc: XMLDocument, content: Element) => {
+  const row = createMathElement(doc, "mrow");
+  row.appendChild(createMathElement(doc, "mo", "("));
+  row.appendChild(content);
+  row.appendChild(createMathElement(doc, "mo", ")"));
+  return row;
+};
+
+const mapIdentifierToPresentationSymbol = (identifier: string) => {
+  const trimmed = identifier.trim();
+  if (!trimmed) {
+    return trimmed;
   }
 
-  const lines: string[] = [];
+  const lower = trimmed.toLowerCase();
+  if (GREEK_SYMBOL_BY_NAME[lower]) {
+    return GREEK_SYMBOL_BY_NAME[lower] ?? trimmed;
+  }
 
-  blocks.forEach((block, index) => {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(block, "application/xml");
-    const parseError = doc.querySelector("parsererror");
-
-    lines.push(`Math block ${index + 1}`);
-
-    if (parseError) {
-      lines.push(stripNamespaces(block));
-      lines.push("");
-      return;
+  const firstUpper = trimmed[0] === trimmed[0]?.toUpperCase() && trimmed[0] !== trimmed[0]?.toLowerCase();
+  if (firstUpper) {
+    const key = `${lower}_upper`;
+    if (GREEK_SYMBOL_BY_NAME[key]) {
+      return GREEK_SYMBOL_BY_NAME[key] ?? trimmed;
     }
+  }
 
-    const mathRoot = doc.documentElement;
-    const expressionRoot = mathRoot.firstElementChild;
+  return trimmed;
+};
 
-    if (!expressionRoot) {
-      lines.push("(empty math block)");
-      lines.push("");
-      return;
+const getApplyOperatorName = (applyNode: Element) => {
+  const firstChild = applyNode.children[0];
+  if (!firstChild) {
+    return "";
+  }
+  return getLocalTagName(firstChild.tagName);
+};
+
+const getOperatorPrecedence = (operator: string) => {
+  if (["eq", "lt", "gt", "leq", "geq"].includes(operator)) {
+    return 0;
+  }
+  if (["plus", "minus"].includes(operator)) {
+    return 1;
+  }
+  if (["times", "divide"].includes(operator)) {
+    return 2;
+  }
+  if (["power"].includes(operator)) {
+    return 3;
+  }
+  if (["diff"].includes(operator)) {
+    return 4;
+  }
+  return 5;
+};
+
+const renderOperandForOperator = (
+  doc: XMLDocument,
+  operand: Element,
+  parentOperator: string,
+  position: "left" | "right" | "middle"
+) => {
+  const rendered = convertContentNodeToPresentation(doc, operand);
+
+  if (getLocalTagName(operand.tagName) !== "apply") {
+    return rendered;
+  }
+
+  const childOperator = getApplyOperatorName(operand);
+  const childPrecedence = getOperatorPrecedence(childOperator);
+  const parentPrecedence = getOperatorPrecedence(parentOperator);
+
+  let needsParentheses = childPrecedence < parentPrecedence;
+
+  if (parentOperator === "divide" && position === "right") {
+    needsParentheses = childPrecedence <= parentPrecedence;
+  }
+
+  if (parentOperator === "minus" && position === "right") {
+    needsParentheses = childPrecedence <= parentPrecedence;
+  }
+
+  if (parentOperator === "power" && position === "left") {
+    needsParentheses = childPrecedence <= 2;
+  }
+
+  if (parentOperator === "power" && position === "right") {
+    needsParentheses = childPrecedence <= parentPrecedence;
+  }
+
+  return needsParentheses ? wrapWithParentheses(doc, rendered) : rendered;
+};
+
+const buildInfixRow = (doc: XMLDocument, operands: Element[], symbol: string) => {
+  const operatorNameBySymbol: Record<string, string> = {
+    "+": "plus",
+    "-": "minus",
+    "·": "times",
+    "=": "eq",
+    "<": "lt",
+    ">": "gt",
+    "<=": "leq",
+    ">=": "geq",
+  };
+  const parentOperator = operatorNameBySymbol[symbol] ?? "";
+  const row = createMathElement(doc, "mrow");
+  operands.forEach((operand, index) => {
+    if (index > 0) {
+      row.appendChild(createMathElement(doc, "mo", symbol));
     }
-
-    lines.push(renderMathNode(expressionRoot));
-    lines.push("");
+    const position = index === 0 ? "left" : "right";
+    row.appendChild(renderOperandForOperator(doc, operand, parentOperator, position));
   });
+  return row;
+};
 
-  return lines;
+const convertApplyToPresentation = (doc: XMLDocument, applyNode: Element): Element => {
+  const children = Array.from(applyNode.children);
+  if (!children.length) {
+    return createMathElement(doc, "mrow");
+  }
+
+  const operator = getLocalTagName(children[0]?.tagName ?? "");
+  const operands = children.slice(1);
+
+  if (operator === "plus") {
+    return buildInfixRow(doc, operands, "+");
+  }
+
+  if (operator === "minus") {
+    if (operands.length === 1 && operands[0]) {
+      const row = createMathElement(doc, "mrow");
+      row.appendChild(createMathElement(doc, "mo", "-"));
+      row.appendChild(renderOperandForOperator(doc, operands[0], "minus", "right"));
+      return row;
+    }
+    return buildInfixRow(doc, operands, "-");
+  }
+
+  if (operator === "times") {
+    return buildInfixRow(doc, operands, "·");
+  }
+
+  if (operator === "divide" && operands[0] && operands[1]) {
+    const frac = createMathElement(doc, "mfrac");
+    frac.appendChild(renderOperandForOperator(doc, operands[0], "divide", "left"));
+    frac.appendChild(renderOperandForOperator(doc, operands[1], "divide", "right"));
+    return frac;
+  }
+
+  if (operator === "power" && operands[0] && operands[1]) {
+    const sup = createMathElement(doc, "msup");
+    sup.appendChild(renderOperandForOperator(doc, operands[0], "power", "left"));
+    sup.appendChild(renderOperandForOperator(doc, operands[1], "power", "right"));
+    return sup;
+  }
+
+  if (["eq", "lt", "gt", "leq", "geq"].includes(operator)) {
+    const symbolByOperator: Record<string, string> = {
+      eq: "=",
+      lt: "<",
+      gt: ">",
+      leq: "<=",
+      geq: ">=",
+    };
+    return buildInfixRow(doc, operands, symbolByOperator[operator] ?? "=");
+  }
+
+  if (operator === "diff") {
+    const row = createMathElement(doc, "mrow");
+    const withRespectTo =
+      children.find((child) => getLocalTagName(child.tagName) === "bvar")?.querySelector("ci")?.textContent?.trim() ??
+      "t";
+    const targetOperand =
+      children.find((child, index) => index > 0 && getLocalTagName(child.tagName) !== "bvar") ?? operands[0];
+
+    const numerator = createMathElement(doc, "mrow");
+    numerator.appendChild(createMathElement(doc, "mo", "d"));
+    if (targetOperand) {
+      numerator.appendChild(renderOperandForOperator(doc, targetOperand, "diff", "right"));
+    }
+
+    const denominator = createMathElement(doc, "mrow");
+    denominator.appendChild(createMathElement(doc, "mo", "d"));
+    denominator.appendChild(createMathElement(doc, "mi", withRespectTo));
+
+    const frac = createMathElement(doc, "mfrac");
+    frac.appendChild(numerator);
+    frac.appendChild(denominator);
+    row.appendChild(frac);
+    return row;
+  }
+
+  const fallback = createMathElement(doc, "mrow");
+  fallback.appendChild(createMathElement(doc, "mi", operator || "f"));
+  fallback.appendChild(createMathElement(doc, "mo", "("));
+  operands.forEach((operand, index) => {
+    if (index > 0) {
+      fallback.appendChild(createMathElement(doc, "mo", ","));
+    }
+    fallback.appendChild(renderOperandForOperator(doc, operand, operator || "", "middle"));
+  });
+  fallback.appendChild(createMathElement(doc, "mo", ")"));
+  return fallback;
+};
+
+const convertContentNodeToPresentation = (doc: XMLDocument, node: Element): Element => {
+  const localName = getLocalTagName(node.tagName);
+
+  if (localName === "ci") {
+    return createMathElement(doc, "mi", mapIdentifierToPresentationSymbol((node.textContent ?? "").trim()));
+  }
+
+  if (localName === "cn") {
+    // CellML often carries a units attribute on cn; preview intentionally ignores units for now.
+    return createMathElement(doc, "mn", (node.textContent ?? "").trim());
+  }
+
+  if (localName === "apply") {
+    return convertApplyToPresentation(doc, node);
+  }
+
+  if (localName === "piecewise") {
+    return createMathElement(doc, "mtext", "piecewise expression");
+  }
+
+  const children = Array.from(node.children);
+  if (!children.length) {
+    return createMathElement(doc, "mi", (node.textContent ?? "").trim());
+  }
+
+  const row = createMathElement(doc, "mrow");
+  children.forEach((child) => row.appendChild(convertContentNodeToPresentation(doc, child)));
+  return row;
+};
+
+const convertContentApplyToPresentationMathMl = (applyXml: string) => {
+  const parser = new DOMParser();
+  // Strip units attributes (e.g. cellml:units) so preview parsing does not depend on CellML namespace declarations.
+  const sanitizedApplyXml = applyXml.replace(/\s+[a-zA-Z_][\w.-]*:units\s*=\s*"[^"]*"/g, "");
+  const wrappedSource = `<math xmlns="${MATHML_NAMESPACE}">${sanitizedApplyXml}</math>`;
+  const parsedDoc = parser.parseFromString(wrappedSource, "application/xml");
+
+  if (parsedDoc.querySelector("parsererror")) {
+    return null;
+  }
+
+  const applyNode = Array.from(parsedDoc.documentElement.children).find(
+    (child) => getLocalTagName(child.tagName) === "apply"
+  );
+  if (!applyNode) {
+    return null;
+  }
+
+  const outputDoc = document.implementation.createDocument(MATHML_NAMESPACE, "math", null);
+  const mathRoot = outputDoc.documentElement;
+  mathRoot.setAttribute("display", "block");
+  mathRoot.appendChild(convertContentNodeToPresentation(outputDoc, applyNode));
+
+  return new XMLSerializer().serializeToString(mathRoot);
+};
+
+const updateMathPreviewForCursor = (position?: MonacoPosition | null) => {
+  if (!monacoEditor) {
+    return;
+  }
+
+  const xml = monacoEditor.getValue();
+  const cursor = position ?? monacoEditor.getPosition();
+
+  if (!cursor) {
+    mathPreview.value = {
+      statusMessage: "Cursor position unavailable.",
+      rawApply: null,
+      presentationMathMl: null,
+    };
+    return;
+  }
+
+  const cursorOffset = offsetFromPosition(xml, cursor);
+  const mathRange = findEnclosingTagRange(xml, cursorOffset, "math");
+
+  if (!mathRange || cursorOffset < mathRange.start || cursorOffset > mathRange.end) {
+    mathPreview.value = {
+      statusMessage: "Cursor is not inside a MathML <math> element.",
+      rawApply: null,
+      presentationMathMl: null,
+    };
+    return;
+  }
+
+  const mathSource = xml.slice(mathRange.start, mathRange.end);
+  const relativeCursorOffset = cursorOffset - mathRange.start;
+  const directChildApplyRanges = findDirectChildApplyRanges(mathSource);
+  const applyRangeInMath = directChildApplyRanges.find(
+    (range) => relativeCursorOffset >= range.start && relativeCursorOffset <= range.end
+  );
+
+  if (!applyRangeInMath) {
+    mathPreview.value = {
+      statusMessage:
+        "Cursor is inside <math>, but not within an equation apply that is a direct child of that math element.",
+      rawApply: null,
+      presentationMathMl: null,
+    };
+    return;
+  }
+
+  const applyXml = mathSource.slice(applyRangeInMath.start, applyRangeInMath.end);
+  const presentationMathMl = convertContentApplyToPresentationMathMl(applyXml);
+
+  if (!presentationMathMl) {
+    mathPreview.value = {
+      statusMessage: "Could not convert this equation to presentation MathML.",
+      rawApply: applyXml,
+      presentationMathMl: null,
+    };
+    return;
+  }
+
+  mathPreview.value = {
+    statusMessage: "Live preview of the selected MathML equation.",
+    rawApply: applyXml,
+    presentationMathMl,
+  };
+};
+
+const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+
+const onPreviewResizeMove = (event: MouseEvent) => {
+  if (!resizingPreview.value || !xmlEditorPane.value) {
+    return;
+  }
+
+  const deltaX = event.clientX - resizeStartX;
+  const minPreviewWidth = 220;
+  const minEditorWidth = 320;
+  const gutterWidth = 12;
+  const maxPreviewWidth = Math.max(
+    minPreviewWidth,
+    xmlEditorPane.value.clientWidth - minEditorWidth - gutterWidth
+  );
+
+  equationPreviewWidth.value = clamp(resizeStartWidth - deltaX, minPreviewWidth, maxPreviewWidth);
+  monacoEditor?.layout();
+};
+
+const stopPreviewResize = () => {
+  if (!resizingPreview.value) {
+    return;
+  }
+
+  resizingPreview.value = false;
+  window.removeEventListener("mousemove", onPreviewResizeMove);
+  window.removeEventListener("mouseup", stopPreviewResize);
+};
+
+const startPreviewResize = (event: MouseEvent) => {
+  if (!xmlEditorPane.value) {
+    return;
+  }
+
+  event.preventDefault();
+  resizingPreview.value = true;
+  resizeStartX = event.clientX;
+  resizeStartWidth = equationPreviewWidth.value;
+
+  window.addEventListener("mousemove", onPreviewResizeMove);
+  window.addEventListener("mouseup", stopPreviewResize);
 };
 
 const createDefaultSimulationSettings = (): SimulationSettings => ({
@@ -301,7 +797,6 @@ const createTabFromContent = (name: string, xml: string): ModelTab => ({
   xml,
   activeSubview: "xml",
   simulation: createDefaultSimulationSettings(),
-  mathReadable: buildMathReadable(xml),
   validationMessage: validateWithLibCellml(xml),
 });
 
@@ -374,6 +869,11 @@ const closeTab = (tabId: string) => {
 
   if (!tabs.value.length) {
     boundEditorTabId = null;
+    mathPreview.value = {
+      statusMessage: "Move the cursor inside a MathML apply element to preview an equation.",
+      rawApply: null,
+      presentationMathMl: null,
+    };
   }
 
   updateStatusFromTabs();
@@ -432,8 +932,12 @@ const ensureMonacoEditor = async () => {
       }
 
       activeTab.value.xml = monacoEditor.getValue();
-      activeTab.value.mathReadable = buildMathReadable(activeTab.value.xml);
       activeTab.value.validationMessage = validateWithLibCellml(activeTab.value.xml);
+      updateMathPreviewForCursor(monacoEditor.getPosition());
+    });
+
+    monacoCursorSubscription = monacoEditor.onDidChangeCursorPosition((event) => {
+      updateMathPreviewForCursor(event.position);
     });
   })();
 
@@ -464,6 +968,7 @@ const syncEditorWithActiveTab = async () => {
     boundEditorTabId = tab.id;
   }
 
+  updateMathPreviewForCursor(monacoEditor.getPosition());
   monacoEditor.layout();
 };
 
@@ -487,7 +992,9 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   window.removeEventListener("resize", onWindowResize);
+  stopPreviewResize();
   monacoSubscription?.dispose();
+  monacoCursorSubscription?.dispose();
   monacoEditor?.dispose();
 });
 </script>
@@ -561,24 +1068,35 @@ onBeforeUnmount(() => {
             >
               Simulation Setup
             </button>
-            <button
-              class="subview-button"
-              :class="{ active: activeTab.activeSubview === 'math' }"
-              @click="switchSubview('math')"
-              type="button"
-            >
-              Math View
-            </button>
           </nav>
 
           <section ref="subviewBody" class="subview-body">
-            <div v-show="activeTab.activeSubview === 'xml'" class="xml-editor-pane">
+            <div
+              v-show="activeTab.activeSubview === 'xml'"
+              ref="xmlEditorPane"
+              class="xml-editor-pane"
+              :style="{ '--equation-preview-width': `${equationPreviewWidth}px` }"
+            >
               <div ref="xmlEditorHost" class="monaco-host"></div>
+              <div
+                class="pane-divider"
+                :class="{ active: resizingPreview }"
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize equation preview"
+                @mousedown="startPreviewResize"
+              ></div>
+              <aside class="equation-preview-pane">
+                <h2>Equation Preview</h2>
+                <p class="equation-status">{{ mathPreview.statusMessage }}</p>
+                <div v-if="mathPreview.presentationMathMl" class="equation-render" v-html="mathPreview.presentationMathMl"></div>
+                <pre v-if="mathPreview.rawApply" class="equation-source">{{ mathPreview.rawApply }}</pre>
+              </aside>
             </div>
 
             <div v-show="activeTab.activeSubview === 'simulation'" class="simulation-pane">
               <h2>Simulation Experiment Configuration</h2>
-              <p>These settings are lightweight metadata for the experiment intent of the current model.</p>
+              <p>TODO: create a simple simulation setup interface and include a link to run directly in OpenCOR. There should also be an option to download the generated OMEX archive.</p>
               <div class="grid-form">
                 <label>
                   Start time
@@ -611,14 +1129,6 @@ onBeforeUnmount(() => {
               <pre class="sim-preview">{{ JSON.stringify(activeTab.simulation, null, 2) }}</pre>
             </div>
 
-            <div v-show="activeTab.activeSubview === 'math'" class="math-pane">
-              <h2>Human-Readable Mathematics</h2>
-              <p>
-                Mathematical blocks are extracted from MathML and rendered into a concise readable form to support quick
-                model review.
-              </p>
-              <pre class="math-readable">{{ activeTab.mathReadable.join('\n') }}</pre>
-            </div>
           </section>
 
           <aside class="validation-panel">
@@ -630,7 +1140,7 @@ onBeforeUnmount(() => {
         <div v-else class="empty-state">
           <img src="/branding/compact-mark.png" alt="CellMLForge compact mark" />
           <h2>Drop a CellML model to begin</h2>
-          <p>Each dropped file opens in its own tab, with XML, simulation, and math views ready for editing.</p>
+          <p>Each dropped file opens in its own tab, with XML plus live equation preview and simulation views.</p>
         </div>
       </section>
     </main>
