@@ -545,9 +545,17 @@ const buildInfixRow = (doc: XMLDocument, operands: Element[], symbol: string) =>
   return row;
 };
 
+const createTextElement = (doc: XMLDocument, text: string, style?: string) => {
+  const element = createMathElement(doc, "mtext", text);
+  if (style) {
+    element.setAttribute("fontstyle", style);
+  }
+  return element;
+};
+
 const buildFunctionCallRow = (doc: XMLDocument, operands: Element[], functionName: string) => {
   const row = createMathElement(doc, "mrow");
-  row.appendChild(createMathElement(doc, "mi", functionName));
+  row.appendChild(createTextElement(doc, functionName));
   row.appendChild(createMathElement(doc, "mo", "("));
   operands.forEach((operand, index) => {
     if (index > 0) {
@@ -582,7 +590,7 @@ const convertPiecewiseToPresentation = (doc: XMLDocument, piecewiseNode: Element
       if (condition) {
         row.appendChild(convertContentNodeToPresentation(doc, condition));
       }
-      row.appendChild(createMathElement(doc, "mtext", "  if  "));
+      row.appendChild(createTextElement(doc, "  if  "));
       if (value) {
         row.appendChild(convertContentNodeToPresentation(doc, value));
       }
@@ -593,7 +601,7 @@ const convertPiecewiseToPresentation = (doc: XMLDocument, piecewiseNode: Element
       if (value) {
         row.appendChild(convertContentNodeToPresentation(doc, value));
       }
-      row.appendChild(createMathElement(doc, "mtext", "  otherwise"));
+      row.appendChild(createTextElement(doc, "  otherwise"));
       rows.push(row);
     }
   });
@@ -774,7 +782,10 @@ const convertContentNodeToPresentation = (doc: XMLDocument, node: Element): Elem
   const localName = getLocalTagName(node.tagName);
 
   if (localName === "ci") {
-    return createMathElement(doc, "mi", mapIdentifierToPresentationSymbol((node.textContent ?? "").trim()));
+    const identifier = mapIdentifierToPresentationSymbol((node.textContent ?? "").trim());
+    const element = createMathElement(doc, "mi", identifier);
+    element.setAttribute("class", "math-identifier");
+    return element;
   }
 
   if (localName === "cn") {

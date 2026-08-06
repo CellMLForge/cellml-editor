@@ -215,6 +215,11 @@ body {
   outline-offset: -6px;
 }
 
+.math-identifier {
+  font-style: italic;
+  font-family: "Times New Roman", serif;
+}
+
 .hidden-input {
   display: none;
 }
