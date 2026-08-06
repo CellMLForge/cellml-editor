@@ -79,6 +79,27 @@ body {
   color: rgba(255, 255, 255, 0.9);
 }
 
+.banner-meta {
+  display: grid;
+  justify-items: end;
+  align-content: center;
+  gap: 0.45rem;
+}
+
+.version-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: #ffffff;
+  background: rgba(8, 20, 33, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+
 .banner-status {
   display: grid;
   justify-items: end;

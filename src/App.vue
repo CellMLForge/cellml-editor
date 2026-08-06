@@ -3,6 +3,7 @@ import loader from "@monaco-editor/loader";
 import libCellMLModule from "libcellml.js";
 import libCellMLWasmUrl from "libcellml.js/libcellml.wasm?url";
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import pkg from "../package.json";
 
 type EditorSubview = "xml" | "simulation";
 
@@ -52,6 +53,7 @@ interface MathPreview {
 
 const ISSUE_TRACKER_URL = "https://github.com/CellMLForge/cellml-editor/issues/new/choose";
 const PREVIEW_WIDTH_STORAGE_KEY = "cellmlforge.equation-preview-width";
+const appVersion = pkg.version;
 
 const tabs = ref<ModelTab[]>([]);
 const activeTabId = ref<string | null>(null);
@@ -1315,36 +1317,39 @@ onBeforeUnmount(() => {
           <p>Single-page CellML editing workspace for GitHub Pages hosting.</p>
         </div>
       </div>
-      <div class="banner-status">
-        <div class="status-tooltip-wrap">
-          <button
-            class="status-pill"
-            :class="`state-${libCellmlState}`"
-            type="button"
-            :title="libCellmlTooltipText"
-            aria-label="libCellML runtime details"
-          >
-            libCellML.js: {{ libCellmlState }}
-          </button>
-          <div class="status-tooltip" role="tooltip">
-            <p v-if="libCellmlVersion">libCellML version: {{ libCellmlVersion }}</p>
-            <p v-else>libCellML version unavailable</p>
-            <p>State: {{ libCellmlState }}</p>
-            <p v-if="libCellmlError">Error: {{ libCellmlError }}</p>
+      <div class="banner-meta">
+        <span class="version-pill">v{{ appVersion }}</span>
+        <div class="banner-status">
+          <div class="status-tooltip-wrap">
+            <button
+              class="status-pill"
+              :class="`state-${libCellmlState}`"
+              type="button"
+              :title="libCellmlTooltipText"
+              aria-label="libCellML runtime details"
+            >
+              libCellML.js: {{ libCellmlState }}
+            </button>
+            <div class="status-tooltip" role="tooltip">
+              <p v-if="libCellmlVersion">libCellML version: {{ libCellmlVersion }}</p>
+              <p v-else>libCellML version unavailable</p>
+              <p>State: {{ libCellmlState }}</p>
+              <p v-if="libCellmlError">Error: {{ libCellmlError }}</p>
+            </div>
           </div>
-        </div>
-        <p v-if="libCellmlError" class="status-detail">{{ libCellmlError }}</p>
-        <div class="banner-actions">
-          <button class="upload-button" type="button" @click="promptFileDialog">Open .cellml file</button>
-          <a
-            class="issue-button"
-            :href="ISSUE_TRACKER_URL"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Report an issue on GitHub"
-          >
-            Report Issue
-          </a>
+          <p v-if="libCellmlError" class="status-detail">{{ libCellmlError }}</p>
+          <div class="banner-actions">
+            <button class="upload-button" type="button" @click="promptFileDialog">Open .cellml file</button>
+            <a
+              class="issue-button"
+              :href="ISSUE_TRACKER_URL"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Report an issue on GitHub"
+            >
+              Report Issue
+            </a>
+          </div>
         </div>
       </div>
     </header>
