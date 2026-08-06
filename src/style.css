@@ -245,10 +245,22 @@ body {
 
 .subview-nav {
   display: flex;
-  gap: 0.4rem;
+  align-items: center;
+  justify-content: space-between;
   padding: 0.7rem;
   border-bottom: 1px solid var(--line);
   background: #f2f8fb;
+}
+
+.subview-tabs {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.subview-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 .subview-button {
@@ -267,13 +279,54 @@ body {
   border-color: #0f3850;
 }
 
+.icon-save-button {
+  display: inline-grid;
+  place-items: center;
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 8px;
+  border: 1px solid #8bb2c4;
+  background: #ffffff;
+  color: #19475c;
+  cursor: pointer;
+  transition: transform 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+}
+
+.icon-save-button svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.icon-save-button.primary {
+  border-color: #2f6f86;
+  background: #2f6f86;
+  color: #ffffff;
+}
+
+.icon-save-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(21, 70, 91, 0.22);
+}
+
+.icon-save-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .subview-body {
   min-height: 0;
   overflow: auto;
 }
 
-.xml-editor-pane {
+.xml-workspace {
   height: min(60vh, 640px);
+  display: grid;
+  grid-template-rows: 1fr;
+  min-height: 0;
+}
+
+.xml-editor-pane {
+  height: 100%;
   margin: 0;
   padding: 0;
   display: grid;
@@ -479,9 +532,19 @@ body {
     flex-direction: column;
   }
 
+  .subview-nav {
+    flex-wrap: wrap;
+    gap: 0.45rem;
+  }
+
   .xml-editor-pane,
   .monaco-host {
     height: 54vh;
+  }
+
+  .xml-workspace {
+    height: auto;
+    min-height: 54vh;
   }
 
   .xml-editor-pane {

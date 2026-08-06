@@ -71,6 +71,8 @@ const mathPreview = ref<MathPreview>({
 });
 const equationPreviewWidth = ref(360);
 const resizingPreview = ref(false);
+const exportingXml = ref(false);
+const exportingCellml2 = ref(false);
 
 const activeTab = computed(() => tabs.value.find((tab) => tab.id === activeTabId.value) ?? null);
 const libCellmlTooltipText = computed(() => {
@@ -782,6 +784,123 @@ const startPreviewResize = (event: MouseEvent) => {
   window.addEventListener("mouseup", stopPreviewResize);
 };
 
+const getActiveXmlText = () => {
+  if (!activeTab.value) {
+    return null;
+  }
+
+  if (
+    monacoEditor &&
+    activeTab.value.activeSubview === "xml" &&
+    boundEditorTabId === activeTab.value.id
+  ) {
+    return monacoEditor.getValue();
+  }
+
+  return activeTab.value.xml;
+};
+
+const toSafeCellmlFileName = (name: string, suffix = "") => {
+  const trimmed = name.trim() || "model";
+
+  if (/\.cellml$/i.test(trimmed)) {
+    return trimmed.replace(/\.cellml$/i, `${suffix}.cellml`);
+  }
+
+  return `${trimmed}${suffix}.cellml`;
+};
+
+const downloadTextFile = (content: string, fileName: string) => {
+  const blob = new Blob([content], { type: "application/xml;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+};
+
+const toCellml2Xml = async (xmlSource: string) => {
+  if (libCellmlState.value !== "ready") {
+    await ensureLibCellml();
+  }
+
+  const parserCtor = libCellmlApi.value?.Parser;
+  const printerCtor = libCellmlApi.value?.Printer;
+
+  if (typeof parserCtor !== "function" || typeof printerCtor !== "function") {
+    throw new Error("libCellML parser/printer APIs are not available.");
+  }
+
+  const parser = new parserCtor(false);
+  const model = parser.parseModel(xmlSource);
+
+  if (!model) {
+    throw new Error("libCellML could not parse the model.");
+  }
+
+  const printer = new printerCtor();
+  // libcellml.js@0.5.0 expects a second boolean argument.
+  const printed = String(printer.printModel(model, false) ?? "").trim();
+
+  if (!printed) {
+    throw new Error("libCellML returned an empty CellML 2 serialization.");
+  }
+
+  return {
+    xml: printed,
+    issueCount: typeof parser.issueCount === "function" ? Number(parser.issueCount()) : 0,
+  };
+};
+
+const exportRawXml = () => {
+  if (!activeTab.value || exportingXml.value) {
+    return;
+  }
+
+  const xmlSource = getActiveXmlText();
+  if (!xmlSource) {
+    statusMessage.value = "No active model to export.";
+    return;
+  }
+
+  exportingXml.value = true;
+  try {
+    downloadTextFile(xmlSource, toSafeCellmlFileName(activeTab.value.name, "-raw"));
+    statusMessage.value = "Exported current XML.";
+  } finally {
+    exportingXml.value = false;
+  }
+};
+
+const exportCellml2Xml = async () => {
+  if (!activeTab.value || exportingCellml2.value) {
+    return;
+  }
+
+  const xmlSource = getActiveXmlText();
+  if (!xmlSource) {
+    statusMessage.value = "No active model to export.";
+    return;
+  }
+
+  exportingCellml2.value = true;
+  try {
+    const result = await toCellml2Xml(xmlSource);
+    downloadTextFile(result.xml, toSafeCellmlFileName(activeTab.value.name, "-cellml2"));
+    statusMessage.value =
+      result.issueCount > 0
+        ? `Exported CellML 2 with ${result.issueCount} parser issue${result.issueCount === 1 ? "" : "s"}.`
+        : "Exported CellML 2 model.";
+  } catch (error) {
+    statusMessage.value = `CellML 2 export failed: ${String(error)}`;
+  } finally {
+    exportingCellml2.value = false;
+  }
+};
+
 const createDefaultSimulationSettings = (): SimulationSettings => ({
   startTime: 0,
   endTime: 100,
@@ -1052,46 +1171,82 @@ onBeforeUnmount(() => {
 
         <div v-if="activeTab" class="tab-content-frame">
           <nav class="subview-nav" aria-label="Editor views">
-            <button
-              class="subview-button"
-              :class="{ active: activeTab.activeSubview === 'xml' }"
-              @click="switchSubview('xml')"
-              type="button"
-            >
-              Raw XML
-            </button>
-            <button
-              class="subview-button"
-              :class="{ active: activeTab.activeSubview === 'simulation' }"
-              @click="switchSubview('simulation')"
-              type="button"
-            >
-              Simulation Setup
-            </button>
+            <div class="subview-tabs">
+              <button
+                class="subview-button"
+                :class="{ active: activeTab.activeSubview === 'xml' }"
+                @click="switchSubview('xml')"
+                type="button"
+              >
+                Raw XML
+              </button>
+              <button
+                class="subview-button"
+                :class="{ active: activeTab.activeSubview === 'simulation' }"
+                @click="switchSubview('simulation')"
+                type="button"
+              >
+                Simulation Setup
+              </button>
+            </div>
+
+            <div v-if="activeTab.activeSubview === 'xml'" class="subview-actions">
+              <button
+                class="icon-save-button primary"
+                type="button"
+                :disabled="exportingCellml2"
+                :title="exportingCellml2 ? 'Preparing CellML 2...' : 'Save as CellML 2'"
+                aria-label="Save as CellML 2"
+                @click="exportCellml2Xml"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path
+                    d="M5 3h11l3 3v15H5V3zm2 2v4h8V5H7zm0 8v6h10v-6H7zm2 1h6v4H9v-4z"
+                    fill="currentColor"
+                  />
+                </svg>
+              </button>
+              <button
+                class="icon-save-button"
+                type="button"
+                :disabled="exportingXml"
+                :title="exportingXml ? 'Exporting XML...' : 'Save current XML'"
+                aria-label="Save current XML"
+                @click="exportRawXml"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path
+                    d="M12 3l5 5h-3v7h-4V8H7l5-5zm-7 14h14v4H5v-4z"
+                    fill="currentColor"
+                  />
+                </svg>
+              </button>
+            </div>
           </nav>
 
           <section ref="subviewBody" class="subview-body">
-            <div
-              v-show="activeTab.activeSubview === 'xml'"
-              ref="xmlEditorPane"
-              class="xml-editor-pane"
-              :style="{ '--equation-preview-width': `${equationPreviewWidth}px` }"
-            >
-              <div ref="xmlEditorHost" class="monaco-host"></div>
+            <div v-show="activeTab.activeSubview === 'xml'" class="xml-workspace">
               <div
-                class="pane-divider"
-                :class="{ active: resizingPreview }"
-                role="separator"
-                aria-orientation="vertical"
-                aria-label="Resize equation preview"
-                @mousedown="startPreviewResize"
-              ></div>
-              <aside class="equation-preview-pane">
-                <h2>Equation Preview</h2>
-                <p class="equation-status">{{ mathPreview.statusMessage }}</p>
-                <div v-if="mathPreview.presentationMathMl" class="equation-render" v-html="mathPreview.presentationMathMl"></div>
-                <pre v-if="mathPreview.rawApply" class="equation-source">{{ mathPreview.rawApply }}</pre>
-              </aside>
+                ref="xmlEditorPane"
+                class="xml-editor-pane"
+                :style="{ '--equation-preview-width': `${equationPreviewWidth}px` }"
+              >
+                <div ref="xmlEditorHost" class="monaco-host"></div>
+                <div
+                  class="pane-divider"
+                  :class="{ active: resizingPreview }"
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label="Resize equation preview"
+                  @mousedown="startPreviewResize"
+                ></div>
+                <aside class="equation-preview-pane">
+                  <h2>Equation Preview</h2>
+                  <p class="equation-status">{{ mathPreview.statusMessage }}</p>
+                  <div v-if="mathPreview.presentationMathMl" class="equation-render" v-html="mathPreview.presentationMathMl"></div>
+                  <pre v-if="mathPreview.rawApply" class="equation-source">{{ mathPreview.rawApply }}</pre>
+                </aside>
+              </div>
             </div>
 
             <div v-show="activeTab.activeSubview === 'simulation'" class="simulation-pane">
