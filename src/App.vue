@@ -528,6 +528,10 @@ const buildInfixRow = (doc: XMLDocument, operands: Element[], symbol: string) =>
     ">": "gt",
     "<=": "leq",
     ">=": "geq",
+    "∧": "and",
+    "∨": "or",
+    "⊕": "xor",
+    "≠": "neq",
   };
   const parentOperator = operatorNameBySymbol[symbol] ?? "";
   const row = createMathElement(doc, "mrow");
@@ -539,6 +543,85 @@ const buildInfixRow = (doc: XMLDocument, operands: Element[], symbol: string) =>
     row.appendChild(renderOperandForOperator(doc, operand, parentOperator, position));
   });
   return row;
+};
+
+const buildFunctionCallRow = (doc: XMLDocument, operands: Element[], functionName: string) => {
+  const row = createMathElement(doc, "mrow");
+  row.appendChild(createMathElement(doc, "mi", functionName));
+  row.appendChild(createMathElement(doc, "mo", "("));
+  operands.forEach((operand, index) => {
+    if (index > 0) {
+      row.appendChild(createMathElement(doc, "mo", ","));
+    }
+    row.appendChild(renderOperandForOperator(doc, operand, functionName, "middle"));
+  });
+  row.appendChild(createMathElement(doc, "mo", ")"));
+  return row;
+};
+
+const buildWrappedRow = (doc: XMLDocument, operand: Element | null, leftSymbol: string, rightSymbol: string) => {
+  const row = createMathElement(doc, "mrow");
+  row.appendChild(createMathElement(doc, "mo", leftSymbol));
+  if (operand) {
+    row.appendChild(renderOperandForOperator(doc, operand, "abs", "middle"));
+  }
+  row.appendChild(createMathElement(doc, "mo", rightSymbol));
+  return row;
+};
+
+const convertPiecewiseToPresentation = (doc: XMLDocument, piecewiseNode: Element): Element => {
+  const rows: Element[] = [];
+
+  Array.from(piecewiseNode.children).forEach((child) => {
+    const localName = getLocalTagName(child.tagName);
+
+    if (localName === "piece") {
+      const condition = child.children[0];
+      const value = child.children[1];
+      const row = createMathElement(doc, "mrow");
+      if (condition) {
+        row.appendChild(convertContentNodeToPresentation(doc, condition));
+      }
+      row.appendChild(createMathElement(doc, "mtext", "  if  "));
+      if (value) {
+        row.appendChild(convertContentNodeToPresentation(doc, value));
+      }
+      rows.push(row);
+    } else if (localName === "otherwise") {
+      const value = child.children[0];
+      const row = createMathElement(doc, "mrow");
+      if (value) {
+        row.appendChild(convertContentNodeToPresentation(doc, value));
+      }
+      row.appendChild(createMathElement(doc, "mtext", "  otherwise"));
+      rows.push(row);
+    }
+  });
+
+  if (!rows.length) {
+    return createMathElement(doc, "mtext", "piecewise expression");
+  }
+
+  const container = createMathElement(doc, "mrow");
+  const brace = createMathElement(doc, "mo", "{");
+  brace.setAttribute("stretchy", "true");
+  brace.setAttribute("fence", "true");
+  container.appendChild(brace);
+
+  const table = createMathElement(doc, "mtable");
+  table.setAttribute("columnalign", "left");
+  table.setAttribute("rowspacing", "0.35em");
+
+  rows.forEach((row) => {
+    const tableRow = createMathElement(doc, "mtr");
+    const tableCell = createMathElement(doc, "mtd");
+    tableCell.appendChild(row);
+    tableRow.appendChild(tableCell);
+    table.appendChild(tableRow);
+  });
+
+  container.appendChild(table);
+  return container;
 };
 
 const convertApplyToPresentation = (doc: XMLDocument, applyNode: Element): Element => {
@@ -575,6 +658,40 @@ const convertApplyToPresentation = (doc: XMLDocument, applyNode: Element): Eleme
     return frac;
   }
 
+  if (["and", "or", "xor"].includes(operator)) {
+    const symbolByOperator: Record<string, string> = {
+      and: "∧",
+      or: "∨",
+      xor: "⊕",
+    };
+    return buildInfixRow(doc, operands, symbolByOperator[operator] ?? "∧");
+  }
+
+  if (operator === "not") {
+    const row = createMathElement(doc, "mrow");
+    row.appendChild(createMathElement(doc, "mo", "¬"));
+    if (operands[0]) {
+      row.appendChild(renderOperandForOperator(doc, operands[0], "not", "right"));
+    }
+    return row;
+  }
+
+  if (operator === "neq") {
+    return buildInfixRow(doc, operands, "≠");
+  }
+
+  if (operator === "abs" && operands[0]) {
+    return buildWrappedRow(doc, operands[0], "|", "|");
+  }
+
+  if (operator === "floor" && operands[0]) {
+    return buildWrappedRow(doc, operands[0], "⌊", "⌋");
+  }
+
+  if (operator === "ceiling" && operands[0]) {
+    return buildWrappedRow(doc, operands[0], "⌈", "⌉");
+  }
+
   if (operator === "power" && operands[0] && operands[1]) {
     const sup = createMathElement(doc, "msup");
     sup.appendChild(renderOperandForOperator(doc, operands[0], "power", "left"));
@@ -587,10 +704,32 @@ const convertApplyToPresentation = (doc: XMLDocument, applyNode: Element): Eleme
       eq: "=",
       lt: "<",
       gt: ">",
-      leq: "<=",
-      geq: ">=",
+      leq: "≤",
+      geq: "≥",
     };
     return buildInfixRow(doc, operands, symbolByOperator[operator] ?? "=");
+  }
+
+  if (["sin", "cos", "tan", "sinh", "cosh", "tanh", "exp", "log", "ln", "min", "max"].includes(operator)) {
+    return buildFunctionCallRow(doc, operands, operator);
+  }
+
+  if (operator === "root") {
+    const radicand = operands.find((operand) => getLocalTagName(operand.tagName) !== "degree") ?? operands[0];
+    const degree = operands.find((operand) => getLocalTagName(operand.tagName) === "degree");
+
+    if (radicand && degree) {
+      const root = createMathElement(doc, "mroot");
+      root.appendChild(renderOperandForOperator(doc, radicand, "root", "middle"));
+      root.appendChild(convertContentNodeToPresentation(doc, degree));
+      return root;
+    }
+
+    if (radicand) {
+      const root = createMathElement(doc, "msqrt");
+      root.appendChild(renderOperandForOperator(doc, radicand, "root", "middle"));
+      return root;
+    }
   }
 
   if (operator === "diff") {
@@ -648,7 +787,7 @@ const convertContentNodeToPresentation = (doc: XMLDocument, node: Element): Elem
   }
 
   if (localName === "piecewise") {
-    return createMathElement(doc, "mtext", "piecewise expression");
+    return convertPiecewiseToPresentation(doc, node);
   }
 
   const children = Array.from(node.children);
