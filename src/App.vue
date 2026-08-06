@@ -50,8 +50,24 @@ const subviewBody = ref<HTMLElement | null>(null);
 const libCellmlState = ref<"idle" | "loading" | "ready" | "error">("idle");
 const libCellmlError = ref<string | null>(null);
 const libCellmlApi = ref<any>(null);
+const libCellmlVersion = ref<string | null>(null);
 
 const activeTab = computed(() => tabs.value.find((tab) => tab.id === activeTabId.value) ?? null);
+const libCellmlTooltipText = computed(() => {
+  const details: string[] = [];
+
+  if (libCellmlVersion.value) {
+    details.push(`libCellML version: ${libCellmlVersion.value}`);
+  }
+
+  details.push(`State: ${libCellmlState.value}`);
+
+  if (libCellmlError.value) {
+    details.push(`Error: ${libCellmlError.value}`);
+  }
+
+  return details.join("\n");
+});
 
 let monacoEditor: MonacoEditor | null = null;
 let monacoSubscription: Disposable | null = null;
@@ -102,6 +118,10 @@ const ensureLibCellml = async () => {
     } catch {
       libCellmlApi.value = await new (libCellMLModule as any)(options);
     }
+
+    const versionGetter = libCellmlApi.value?.versionString;
+    libCellmlVersion.value =
+      typeof versionGetter === "function" ? String(versionGetter.call(libCellmlApi.value)) : null;
 
     libCellmlState.value = "ready";
 
@@ -483,7 +503,23 @@ onBeforeUnmount(() => {
         </div>
       </div>
       <div class="banner-status">
-        <p class="status-pill" :class="`state-${libCellmlState}`">libCellML.js: {{ libCellmlState }}</p>
+        <div class="status-tooltip-wrap">
+          <button
+            class="status-pill"
+            :class="`state-${libCellmlState}`"
+            type="button"
+            :title="libCellmlTooltipText"
+            aria-label="libCellML runtime details"
+          >
+            libCellML.js: {{ libCellmlState }}
+          </button>
+          <div class="status-tooltip" role="tooltip">
+            <p v-if="libCellmlVersion">libCellML version: {{ libCellmlVersion }}</p>
+            <p v-else>libCellML version unavailable</p>
+            <p>State: {{ libCellmlState }}</p>
+            <p v-if="libCellmlError">Error: {{ libCellmlError }}</p>
+          </div>
+        </div>
         <p v-if="libCellmlError" class="status-detail">{{ libCellmlError }}</p>
         <button class="upload-button" type="button" @click="promptFileDialog">Open .cellml file</button>
       </div>

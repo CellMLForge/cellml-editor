@@ -86,14 +86,55 @@ body {
   gap: 0.45rem;
 }
 
+.status-tooltip-wrap {
+  position: relative;
+}
+
 .status-pill {
   margin: 0;
+  font: inherit;
   font-weight: 700;
   letter-spacing: 0.03em;
   border-radius: 999px;
   padding: 0.3rem 0.7rem;
   font-size: 0.82rem;
   border: 1px solid rgba(255, 255, 255, 0.35);
+  color: #ffffff;
+  cursor: help;
+}
+
+.status-tooltip {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  width: min(360px, 70vw);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(10, 26, 39, 0.96);
+  color: #e8f4fb;
+  padding: 0.65rem 0.75rem;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition: opacity 120ms ease, transform 120ms ease;
+  z-index: 20;
+}
+
+.status-tooltip p {
+  margin: 0;
+}
+
+.status-tooltip p + p {
+  margin-top: 0.3rem;
+}
+
+.status-tooltip-wrap:hover .status-tooltip,
+.status-tooltip-wrap:focus-within .status-tooltip {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .state-idle,
@@ -349,6 +390,12 @@ body {
 
   .banner-status {
     justify-items: start;
+  }
+
+  .status-tooltip {
+    left: 0;
+    right: auto;
+    width: min(360px, 82vw);
   }
 
   .status-detail {
