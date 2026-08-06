@@ -1,0 +1,362 @@
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap");
+
+:root {
+  --bg-1: #081421;
+  --bg-2: #12344a;
+  --bg-3: #1f5b6b;
+  --panel: #f8fbfd;
+  --panel-soft: #e7f1f5;
+  --ink-1: #0d1f2d;
+  --ink-2: #3d5d72;
+  --accent: #f68e5f;
+  --accent-strong: #de6f3a;
+  --line: #c2d8e2;
+  --ok: #2b9348;
+  --warn: #b26c00;
+  --bad: #b42318;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: "Space Grotesk", "Trebuchet MS", sans-serif;
+  color: var(--ink-1);
+  background:
+    radial-gradient(1200px 600px at 110% -10%, rgba(246, 142, 95, 0.26), transparent 60%),
+    radial-gradient(1000px 600px at -10% 10%, rgba(43, 147, 72, 0.2), transparent 55%),
+    linear-gradient(165deg, var(--bg-1), var(--bg-2) 45%, var(--bg-3));
+}
+
+.page-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 1rem;
+  padding: 1.2rem;
+}
+
+.app-banner {
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 16px;
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.05));
+  backdrop-filter: blur(5px);
+  color: #ffffff;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.2rem;
+}
+
+.brand-wrap {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.brand-logo {
+  width: 180px;
+  max-width: 40vw;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.25));
+}
+
+.brand-copy h1 {
+  margin: 0;
+  font-size: clamp(1.2rem, 2.5vw, 1.8rem);
+}
+
+.brand-copy p {
+  margin: 0.35rem 0 0;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.banner-status {
+  display: grid;
+  justify-items: end;
+  align-content: center;
+  gap: 0.45rem;
+}
+
+.status-pill {
+  margin: 0;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.82rem;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+.state-idle,
+.state-loading {
+  background: rgba(178, 108, 0, 0.2);
+}
+
+.state-ready {
+  background: rgba(43, 147, 72, 0.24);
+}
+
+.state-error {
+  background: rgba(180, 35, 24, 0.28);
+}
+
+.status-detail {
+  margin: 0;
+  max-width: min(420px, 45vw);
+  text-align: right;
+  font-size: 0.8rem;
+  color: #ffd7d2;
+}
+
+.upload-button {
+  font: inherit;
+  border: 0;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-strong));
+  color: white;
+  font-weight: 700;
+  padding: 0.55rem 1rem;
+  cursor: pointer;
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+
+.upload-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(246, 142, 95, 0.35);
+}
+
+.editor-stage {
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(248, 251, 253, 0.94);
+  padding: 1rem;
+  min-height: 0;
+}
+
+.editor-stage.is-dragging {
+  outline: 3px dashed var(--accent);
+  outline-offset: -6px;
+}
+
+.hidden-input {
+  display: none;
+}
+
+.tabs-area {
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 0;
+}
+
+.tab-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding-bottom: 0.75rem;
+}
+
+.top-tab {
+  font: inherit;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.45rem 0.7rem;
+  background: var(--panel-soft);
+  color: var(--ink-1);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  cursor: pointer;
+}
+
+.top-tab.active {
+  border-color: #1f5b6b;
+  background: #d6edf2;
+}
+
+.tab-close {
+  display: inline-grid;
+  place-items: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 50%;
+  background: rgba(13, 31, 45, 0.1);
+  font-size: 0.84rem;
+}
+
+.tab-content-frame {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.subview-nav {
+  display: flex;
+  gap: 0.4rem;
+  padding: 0.7rem;
+  border-bottom: 1px solid var(--line);
+  background: #f2f8fb;
+}
+
+.subview-button {
+  border: 1px solid #bdd4df;
+  border-radius: 8px;
+  background: white;
+  color: var(--ink-1);
+  font: inherit;
+  padding: 0.42rem 0.72rem;
+  cursor: pointer;
+}
+
+.subview-button.active {
+  background: #0f3850;
+  color: #f8fbfd;
+  border-color: #0f3850;
+}
+
+.subview-body {
+  min-height: 0;
+  overflow: auto;
+}
+
+.xml-editor-pane,
+.monaco-host {
+  height: min(60vh, 640px);
+}
+
+.simulation-pane,
+.math-pane {
+  padding: 1rem;
+}
+
+.simulation-pane h2,
+.math-pane h2 {
+  margin-top: 0;
+}
+
+.grid-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.8rem;
+}
+
+.grid-form label {
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.92rem;
+  font-weight: 500;
+}
+
+.grid-form input,
+.grid-form select {
+  border: 1px solid #a7c2cf;
+  border-radius: 8px;
+  padding: 0.45rem 0.55rem;
+  font: inherit;
+  background: white;
+}
+
+.sim-preview,
+.math-readable,
+.validation-panel pre {
+  margin: 0;
+  border: 1px solid #d0e2ea;
+  border-radius: 10px;
+  background: #f8fbfd;
+  padding: 0.8rem;
+  overflow: auto;
+  font-family: "IBM Plex Mono", "Courier New", monospace;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.sim-preview {
+  margin-top: 0.8rem;
+}
+
+.validation-panel {
+  border-top: 1px solid var(--line);
+  background: #f7fbfd;
+  padding: 0.8rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.validation-panel h3 {
+  margin: 0;
+}
+
+.empty-state {
+  min-height: 46vh;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 1.5rem;
+  color: var(--ink-2);
+}
+
+.empty-state img {
+  width: 64px;
+  height: auto;
+}
+
+.empty-state h2 {
+  margin: 0.6rem 0 0.2rem;
+  color: var(--ink-1);
+}
+
+.empty-state p {
+  margin: 0;
+  max-width: 640px;
+}
+
+.app-footer {
+  color: rgba(255, 255, 255, 0.95);
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.92rem;
+  padding-inline: 0.3rem;
+}
+
+.app-footer p {
+  margin: 0;
+}
+
+@media (max-width: 900px) {
+  .app-banner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .banner-status {
+    justify-items: start;
+  }
+
+  .status-detail {
+    max-width: 100%;
+    text-align: left;
+  }
+
+  .app-footer {
+    flex-direction: column;
+  }
+
+  .xml-editor-pane,
+  .monaco-host {
+    height: 54vh;
+  }
+}
