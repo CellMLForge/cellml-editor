@@ -53,6 +53,8 @@ interface MathPreview {
 
 const ISSUE_TRACKER_URL = "https://github.com/CellMLForge/cellml-editor/issues/new/choose";
 const PREVIEW_WIDTH_STORAGE_KEY = "cellmlforge.equation-preview-width";
+const PREVIEW_GREEK_STORAGE_KEY = "cellmlforge.preview-greek-substitution";
+const PREVIEW_SUBSCRIPT_STORAGE_KEY = "cellmlforge.preview-subscript-underscore";
 const appVersion = pkg.version;
 
 const tabs = ref<ModelTab[]>([]);
@@ -76,6 +78,8 @@ const mathPreview = ref<MathPreview>({
 });
 const equationPreviewWidth = ref(360);
 const resizingPreview = ref(false);
+const previewUseGreekSubstitution = ref(true);
+const previewUseUnderscoreSubscript = ref(true);
 const exportingXml = ref(false);
 const exportingCellml2 = ref(false);
 
@@ -441,20 +445,56 @@ const mapIdentifierToPresentationSymbol = (identifier: string) => {
     return trimmed;
   }
 
+  const renderGreek = previewUseGreekSubstitution.value;
   const lower = trimmed.toLowerCase();
-  if (GREEK_SYMBOL_BY_NAME[lower]) {
-    return GREEK_SYMBOL_BY_NAME[lower] ?? trimmed;
-  }
 
-  const firstUpper = trimmed[0] === trimmed[0]?.toUpperCase() && trimmed[0] !== trimmed[0]?.toLowerCase();
-  if (firstUpper) {
-    const key = `${lower}_upper`;
-    if (GREEK_SYMBOL_BY_NAME[key]) {
-      return GREEK_SYMBOL_BY_NAME[key] ?? trimmed;
+  if (renderGreek) {
+    const greekSymbol = GREEK_SYMBOL_BY_NAME[lower];
+    if (greekSymbol) {
+      return greekSymbol;
+    }
+
+    const firstUpper = trimmed[0] === trimmed[0]?.toUpperCase() && trimmed[0] !== trimmed[0]?.toLowerCase();
+    if (firstUpper) {
+      const key = `${lower}_upper`;
+      const upperGreekSymbol = GREEK_SYMBOL_BY_NAME[key];
+      if (upperGreekSymbol) {
+        return upperGreekSymbol;
+      }
     }
   }
 
   return trimmed;
+};
+
+const createIdentifierElement = (doc: XMLDocument, identifier: string) => {
+  const trimmed = identifier.trim();
+  if (!trimmed) {
+    const element = createMathElement(doc, "mi", "");
+    element.setAttribute("class", "math-identifier");
+    return element;
+  }
+
+  if (previewUseUnderscoreSubscript.value && trimmed.includes("_")) {
+    const [base, ...subscriptParts] = trimmed.split("_");
+    if (base && subscriptParts.length) {
+      const subscriptContainer = createMathElement(doc, "msub");
+
+      const baseElement = createMathElement(doc, "mi", mapIdentifierToPresentationSymbol(base));
+      baseElement.setAttribute("class", "math-identifier");
+      subscriptContainer.appendChild(baseElement);
+
+      const subscriptElement = createMathElement(doc, "mi", mapIdentifierToPresentationSymbol(subscriptParts.join("_")));
+      subscriptElement.setAttribute("class", "math-identifier");
+      subscriptContainer.appendChild(subscriptElement);
+
+      return subscriptContainer;
+    }
+  }
+
+  const element = createMathElement(doc, "mi", mapIdentifierToPresentationSymbol(trimmed));
+  element.setAttribute("class", "math-identifier");
+  return element;
 };
 
 const getApplyOperatorName = (applyNode: Element) => {
@@ -794,10 +834,7 @@ const convertContentNodeToPresentation = (doc: XMLDocument, node: Element): Elem
   const localName = getLocalTagName(node.tagName);
 
   if (localName === "ci") {
-    const identifier = mapIdentifierToPresentationSymbol((node.textContent ?? "").trim());
-    const element = createMathElement(doc, "mi", identifier);
-    element.setAttribute("class", "math-identifier");
-    return element;
+    return createIdentifierElement(doc, (node.textContent ?? "").trim());
   }
 
   if (localName === "cn") {
@@ -922,6 +959,16 @@ const persistPreviewWidth = (width: number) => {
   }
 
   window.localStorage.setItem(PREVIEW_WIDTH_STORAGE_KEY, `${width}`);
+};
+
+const persistPreviewSettings = () => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(PREVIEW_GREEK_STORAGE_KEY, previewUseGreekSubstitution.value ? "true" : "false");
+  window.localStorage.setItem(PREVIEW_SUBSCRIPT_STORAGE_KEY, previewUseUnderscoreSubscript.value ? "true" : "false");
+  updateMathPreviewForCursor(monacoEditor?.getPosition() ?? null);
 };
 
 const onPreviewResizeMove = (event: MouseEvent) => {
@@ -1294,6 +1341,16 @@ onMounted(async () => {
     if (Number.isFinite(storedWidth)) {
       equationPreviewWidth.value = clamp(storedWidth, 220, 900);
     }
+
+    const storedGreek = window.localStorage.getItem(PREVIEW_GREEK_STORAGE_KEY);
+    if (storedGreek !== null) {
+      previewUseGreekSubstitution.value = storedGreek === "true";
+    }
+
+    const storedSubscript = window.localStorage.getItem(PREVIEW_SUBSCRIPT_STORAGE_KEY);
+    if (storedSubscript !== null) {
+      previewUseUnderscoreSubscript.value = storedSubscript === "true";
+    }
   }
 
   window.addEventListener("resize", onWindowResize);
@@ -1444,7 +1501,19 @@ onBeforeUnmount(() => {
                   @mousedown="startPreviewResize"
                 ></div>
                 <aside class="equation-preview-pane">
-                  <h2>Equation Preview</h2>
+                  <div class="equation-preview-header">
+                    <h2>Equation Preview</h2>
+                    <div class="preview-toggle-group" role="group" aria-label="Preview identifier options">
+                      <label class="preview-toggle">
+                        <input v-model="previewUseGreekSubstitution" type="checkbox" @change="persistPreviewSettings" />
+                        <span>Greek</span>
+                      </label>
+                      <label class="preview-toggle">
+                        <input v-model="previewUseUnderscoreSubscript" type="checkbox" @change="persistPreviewSettings" />
+                        <span>Subscripts</span>
+                      </label>
+                    </div>
+                  </div>
                   <p class="equation-status">{{ mathPreview.statusMessage }}</p>
                   <div v-if="mathPreview.presentationMathMl" class="equation-render" v-html="mathPreview.presentationMathMl"></div>
                   <pre v-if="mathPreview.rawApply" class="equation-source">{{ mathPreview.rawApply }}</pre>

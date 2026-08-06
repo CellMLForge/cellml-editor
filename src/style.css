@@ -423,9 +423,39 @@ body {
   gap: 0.6rem;
 }
 
+.equation-preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
 .equation-preview-pane h2 {
   margin: 0;
   font-size: 1rem;
+}
+
+.preview-toggle-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.preview-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.76rem;
+  color: var(--ink-2);
+  background: #eaf5fa;
+  border: 1px solid #d0e2ea;
+  border-radius: 999px;
+  padding: 0.25rem 0.55rem;
+}
+
+.preview-toggle input {
+  margin: 0;
 }
 
 .equation-status {
