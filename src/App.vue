@@ -100,6 +100,16 @@ let creatingMonacoEditorPromise: Promise<void> | null = null;
 let resizeStartX = 0;
 let resizeStartWidth = 0;
 
+const resetMonacoEditor = () => {
+  monacoSubscription?.dispose();
+  monacoSubscription = null;
+  monacoCursorSubscription?.dispose();
+  monacoCursorSubscription = null;
+  monacoEditor?.dispose();
+  monacoEditor = null;
+  boundEditorTabId = null;
+};
+
 const MATHML_NAMESPACE = "http://www.w3.org/1998/Math/MathML";
 const GREEK_SYMBOL_BY_NAME: Record<string, string> = {
   alpha: "\u03b1",
@@ -987,7 +997,7 @@ const closeTab = (tabId: string) => {
   }
 
   if (!tabs.value.length) {
-    boundEditorTabId = null;
+    resetMonacoEditor();
     mathPreview.value = {
       statusMessage: "Move the cursor inside a MathML apply element to preview an equation.",
       rawApply: null,
@@ -1112,9 +1122,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   window.removeEventListener("resize", onWindowResize);
   stopPreviewResize();
-  monacoSubscription?.dispose();
-  monacoCursorSubscription?.dispose();
-  monacoEditor?.dispose();
+  resetMonacoEditor();
 });
 </script>
 
