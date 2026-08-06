@@ -51,6 +51,7 @@ interface MathPreview {
 }
 
 const ISSUE_TRACKER_URL = "https://github.com/CellMLForge/cellml-editor/issues/new/choose";
+const PREVIEW_WIDTH_STORAGE_KEY = "cellmlforge.equation-preview-width";
 
 const tabs = ref<ModelTab[]>([]);
 const activeTabId = ref<string | null>(null);
@@ -553,6 +554,12 @@ const createTextElement = (doc: XMLDocument, text: string, style?: string) => {
   return element;
 };
 
+const createMathSpace = (doc: XMLDocument, width = "0.45em") => {
+  const element = createMathElement(doc, "mspace");
+  element.setAttribute("width", width);
+  return element;
+};
+
 const buildFunctionCallRow = (doc: XMLDocument, operands: Element[], functionName: string) => {
   const row = createMathElement(doc, "mrow");
   row.appendChild(createTextElement(doc, functionName));
@@ -590,7 +597,9 @@ const convertPiecewiseToPresentation = (doc: XMLDocument, piecewiseNode: Element
       if (condition) {
         row.appendChild(convertContentNodeToPresentation(doc, condition));
       }
-      row.appendChild(createTextElement(doc, "  if  "));
+      row.appendChild(createMathSpace(doc, "0.35em"));
+      row.appendChild(createTextElement(doc, "if"));
+      row.appendChild(createMathSpace(doc, "0.35em"));
       if (value) {
         row.appendChild(convertContentNodeToPresentation(doc, value));
       }
@@ -601,7 +610,8 @@ const convertPiecewiseToPresentation = (doc: XMLDocument, piecewiseNode: Element
       if (value) {
         row.appendChild(convertContentNodeToPresentation(doc, value));
       }
-      row.appendChild(createTextElement(doc, "  otherwise"));
+      row.appendChild(createMathSpace(doc, "0.35em"));
+      row.appendChild(createTextElement(doc, "otherwise"));
       rows.push(row);
     }
   });
@@ -904,6 +914,14 @@ const updateMathPreviewForCursor = (position?: MonacoPosition | null) => {
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
+const persistPreviewWidth = (width: number) => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(PREVIEW_WIDTH_STORAGE_KEY, `${width}`);
+};
+
 const onPreviewResizeMove = (event: MouseEvent) => {
   if (!resizingPreview.value || !xmlEditorPane.value) {
     return;
@@ -919,6 +937,7 @@ const onPreviewResizeMove = (event: MouseEvent) => {
   );
 
   equationPreviewWidth.value = clamp(resizeStartWidth - deltaX, minPreviewWidth, maxPreviewWidth);
+  persistPreviewWidth(equationPreviewWidth.value);
   monacoEditor?.layout();
 };
 
@@ -927,6 +946,7 @@ const stopPreviewResize = () => {
     return;
   }
 
+  persistPreviewWidth(equationPreviewWidth.value);
   resizingPreview.value = false;
   window.removeEventListener("mousemove", onPreviewResizeMove);
   window.removeEventListener("mouseup", stopPreviewResize);
@@ -1267,6 +1287,13 @@ watch(
 );
 
 onMounted(async () => {
+  if (typeof window !== "undefined") {
+    const storedWidth = Number.parseFloat(window.localStorage.getItem(PREVIEW_WIDTH_STORAGE_KEY) ?? "");
+    if (Number.isFinite(storedWidth)) {
+      equationPreviewWidth.value = clamp(storedWidth, 220, 900);
+    }
+  }
+
   window.addEventListener("resize", onWindowResize);
   await ensureLibCellml();
 });
