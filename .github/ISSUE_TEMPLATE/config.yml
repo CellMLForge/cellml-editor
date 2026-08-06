@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and usage help
+    url: https://github.com/CellMLForge/cellml-editor/issues/new/choose
+    about: Use a template above so we can respond quickly with the right context.

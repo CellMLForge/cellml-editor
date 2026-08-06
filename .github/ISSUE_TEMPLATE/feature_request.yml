@@ -1,0 +1,70 @@
+name: Feature request
+description: Suggest an improvement for the CellML editor
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. Clear use-cases help us prioritize effectively.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Pre-flight checklist
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: What workflow pain point are you trying to address?
+      placeholder: It is difficult to ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the behavior or UX you want.
+      placeholder: Add a button that ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any other approaches or workarounds you considered.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Feature area
+      options:
+        - File loading / tabs
+        - Raw XML editor (Monaco)
+        - Equation preview
+        - CellML 2 export
+        - Simulation setup
+        - GitHub Pages deployment
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: success_criteria
+    attributes:
+      label: Success criteria
+      description: How should we verify this feature is done?
+      placeholder: Users can ... and ...
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Mockups, links, examples, or related tools.

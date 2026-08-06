@@ -175,6 +175,33 @@ body {
   box-shadow: 0 8px 20px rgba(246, 142, 95, 0.35);
 }
 
+.banner-actions {
+  display: inline-flex;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.issue-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  border-radius: 12px;
+  color: #ffffff;
+  text-decoration: none;
+  font-weight: 700;
+  padding: 0.5rem 0.85rem;
+  background: rgba(8, 20, 33, 0.28);
+  transition: transform 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
+}
+
+.issue-button:hover {
+  transform: translateY(-1px);
+  background: rgba(8, 20, 33, 0.5);
+  box-shadow: 0 8px 20px rgba(8, 20, 33, 0.3);
+}
+
 .editor-stage {
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.25);
@@ -526,6 +553,10 @@ body {
   .status-detail {
     max-width: 100%;
     text-align: left;
+  }
+
+  .banner-actions {
+    flex-wrap: wrap;
   }
 
   .app-footer {

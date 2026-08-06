@@ -1,0 +1,73 @@
+name: Question or documentation request
+description: Ask for usage help or suggest documentation improvements
+labels:
+  - documentation
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reaching out. Clear context helps us answer quickly.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Pre-flight checklist
+      options:
+        - label: I checked the README and existing issues first.
+          required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Request type
+      options:
+        - Usage question
+        - Documentation improvement request
+        - Clarification on expected behavior
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question or doc request
+      description: Describe what you need help with or what should be improved.
+      placeholder: How do I export a model as CellML 2 after editing Raw XML?
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: What you already tried, and where you got stuck.
+      placeholder: I opened a model, edited equations, then...
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Related area
+      options:
+        - Getting started / README
+        - File loading / tabs
+        - Raw XML editor (Monaco)
+        - Equation preview
+        - CellML 2 export
+        - Simulation setup
+        - GitHub Pages deployment
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and version (if relevant)
+      placeholder: Chrome 128, Firefox 130, Safari 18, etc.
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional details
+      description: Links, screenshots, or example models that might help.

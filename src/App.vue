@@ -50,6 +50,8 @@ interface MathPreview {
   presentationMathMl: string | null;
 }
 
+const ISSUE_TRACKER_URL = "https://github.com/CellMLForge/cellml-editor/issues/new/choose";
+
 const tabs = ref<ModelTab[]>([]);
 const activeTabId = ref<string | null>(null);
 const dragActive = ref(false);
@@ -1155,7 +1157,18 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <p v-if="libCellmlError" class="status-detail">{{ libCellmlError }}</p>
-        <button class="upload-button" type="button" @click="promptFileDialog">Open .cellml file</button>
+        <div class="banner-actions">
+          <button class="upload-button" type="button" @click="promptFileDialog">Open .cellml file</button>
+          <a
+            class="issue-button"
+            :href="ISSUE_TRACKER_URL"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Report an issue on GitHub"
+          >
+            Report Issue
+          </a>
+        </div>
       </div>
     </header>
 

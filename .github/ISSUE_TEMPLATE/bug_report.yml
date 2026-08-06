@@ -1,0 +1,110 @@
+name: Bug report
+description: Report a reproducible problem in the CellML editor
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please include enough detail so we can reproduce and fix it quickly.
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Pre-flight checklist
+      options:
+        - label: I searched existing issues and did not find a duplicate.
+          required: true
+        - label: I can reproduce this issue on the latest deployed app.
+          required: true
+
+  - type: input
+    id: app_url
+    attributes:
+      label: App URL
+      description: Confirm the URL where you saw this issue.
+      value: https://cellmlforge.github.io/cellml-editor/
+    validations:
+      required: true
+
+  - type: input
+    id: model_source
+    attributes:
+      label: Model / file context
+      description: File name(s), model source, or a small snippet that helps reproduce.
+      placeholder: lorenz.cellml (or link/snippet)
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Provide exact steps from opening the app to seeing the issue.
+      placeholder: |
+        1. Open app URL
+        2. Drag in model.cellml
+        3. Click Raw XML
+        4. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: The editor should render and remain visible after reopening a file.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      placeholder: The editor pane is blank after closing all tabs and opening a new file.
+    validations:
+      required: true
+
+  - type: textarea
+    id: console
+    attributes:
+      label: Browser console output (if any)
+      description: Paste errors/warnings from DevTools console.
+      render: shell
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - File loading / tabs
+        - Raw XML editor (Monaco)
+        - Equation preview
+        - CellML 2 export
+        - Simulation setup
+        - GitHub Pages deployment
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and version
+      placeholder: Chrome 128, Firefox 130, Safari 18, etc.
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: Windows 11, macOS 15, Ubuntu 24.04, etc.
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Screenshots, screen recordings, and extra notes are welcome.
