@@ -2,6 +2,26 @@
 
 Single-page Vue application for editing CellML models in the browser, designed for GitHub Pages hosting.
 
+## Quick Start
+
+Use the live app: https://cellmlforge.github.io/cellml-editor/
+
+Basic usage:
+
+1. Open one or more CellML files:
+	- Click **Open .cellml file**, or
+	- Drag and drop `.cellml` files into the page.
+2. Edit model XML:
+	- Use the **Raw XML** view in the Monaco editor.
+	- Changes are tracked in the current tab.
+3. Preview equations:
+	- Keep the cursor inside a MathML `<apply>` element that is a direct child of `<math>`.
+	- The **Equation Preview** pane renders a human-readable math view beside the XML editor.
+4. Export and save:
+	- Use the save icon buttons in the XML toolbar area.
+	- **Save as CellML 2** exports via `libcellml.js` printer.
+	- **Save current XML** exports the current editor content as-is.
+
 ## Features
 
 - CellMLForge-branded header and workspace shell
