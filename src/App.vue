@@ -45,6 +45,7 @@ const statusMessage = ref("Drop CellML files here to open them in tabs.");
 
 const fileInput = ref<HTMLInputElement | null>(null);
 const xmlEditorHost = ref<HTMLElement | null>(null);
+const subviewBody = ref<HTMLElement | null>(null);
 
 const libCellmlState = ref<"idle" | "loading" | "ready" | "error">("idle");
 const libCellmlError = ref<string | null>(null);
@@ -56,6 +57,7 @@ let monacoEditor: MonacoEditor | null = null;
 let monacoSubscription: Disposable | null = null;
 let boundEditorTabId: string | null = null;
 let syncingEditorFromModel = false;
+let creatingMonacoEditorPromise: Promise<void> | null = null;
 
 const monacoTheme = {
   base: "vs-dark",
@@ -124,7 +126,8 @@ const validateWithLibCellml = (xml: string) => {
       return "libCellML loaded, but parser API was not found.";
     }
 
-    const parser = new parserCtor();
+    // Use non-strict parsing to support CellML 1.0/1.1 inputs.
+    const parser = new parserCtor(false);
 
     if (typeof parser.parseModel === "function") {
       parser.parseModel(xml);
@@ -362,6 +365,9 @@ const switchSubview = (view: EditorSubview) => {
   }
 
   activeTab.value.activeSubview = view;
+  if (subviewBody.value) {
+    subviewBody.value.scrollTop = 0;
+  }
 };
 
 const ensureMonacoEditor = async () => {
@@ -369,32 +375,53 @@ const ensureMonacoEditor = async () => {
     return;
   }
 
-  const monaco = await loader.init();
+  if (creatingMonacoEditorPromise) {
+    await creatingMonacoEditorPromise;
+    return;
+  }
 
-  monaco.editor.defineTheme("cellmlforge-theme", monacoTheme as any);
+  creatingMonacoEditorPromise = (async () => {
+    const monaco = await loader.init();
 
-  monacoEditor = monaco.editor.create(xmlEditorHost.value, {
-    value: "",
-    language: "xml",
-    automaticLayout: true,
-    minimap: { enabled: false },
-    fontSize: 13,
-    lineHeight: 22,
-    wordWrap: "on",
-    scrollBeyondLastLine: false,
-    theme: "cellmlforge-theme",
-    tabSize: 2,
-  }) as unknown as MonacoEditor;
+    monaco.editor.defineTheme("cellmlforge-theme", monacoTheme as any);
 
-  monacoSubscription = monacoEditor.onDidChangeModelContent(() => {
-    if (syncingEditorFromModel || !activeTab.value || !monacoEditor) {
+    const host = xmlEditorHost.value;
+    if (!host) {
       return;
     }
 
-    activeTab.value.xml = monacoEditor.getValue();
-    activeTab.value.mathReadable = buildMathReadable(activeTab.value.xml);
-    activeTab.value.validationMessage = validateWithLibCellml(activeTab.value.xml);
-  });
+    // Defensive clear avoids stacked editor DOM if a stale instance was left behind.
+    host.replaceChildren();
+
+    monacoEditor = monaco.editor.create(host, {
+      value: "",
+      language: "xml",
+      automaticLayout: true,
+      minimap: { enabled: false },
+      fontSize: 13,
+      lineHeight: 22,
+      wordWrap: "on",
+      scrollBeyondLastLine: false,
+      theme: "cellmlforge-theme",
+      tabSize: 2,
+    }) as unknown as MonacoEditor;
+
+    monacoSubscription = monacoEditor.onDidChangeModelContent(() => {
+      if (syncingEditorFromModel || !activeTab.value || !monacoEditor) {
+        return;
+      }
+
+      activeTab.value.xml = monacoEditor.getValue();
+      activeTab.value.mathReadable = buildMathReadable(activeTab.value.xml);
+      activeTab.value.validationMessage = validateWithLibCellml(activeTab.value.xml);
+    });
+  })();
+
+  try {
+    await creatingMonacoEditorPromise;
+  } finally {
+    creatingMonacoEditorPromise = null;
+  }
 };
 
 const syncEditorWithActiveTab = async () => {
@@ -508,7 +535,7 @@ onBeforeUnmount(() => {
             </button>
           </nav>
 
-          <section class="subview-body">
+          <section ref="subviewBody" class="subview-body">
             <div v-show="activeTab.activeSubview === 'xml'" class="xml-editor-pane">
               <div ref="xmlEditorHost" class="monaco-host"></div>
             </div>

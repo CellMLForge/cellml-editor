@@ -231,9 +231,14 @@ body {
   overflow: auto;
 }
 
-.xml-editor-pane,
-.monaco-host {
+.xml-editor-pane {
   height: min(60vh, 640px);
+  margin: 0;
+  padding: 0;
+}
+
+.monaco-host {
+  height: 100%;
 }
 
 .simulation-pane,
